@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# ------------------------------------------------------------------------------
+# Dockerfile.simple: Fast & straightforward for prototypes / Hello World
+# ------------------------------------------------------------------------------
+FROM python:3.12-slim
+
+# Prevent Python from writing .pyc files & enable immediate stdout/stderr flush
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Leverage layer caching: install dependencies before copying app code
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+# Copy application source code
+COPY . .
+
+# Expose standard FastAPI port
+EXPOSE 8000
+
+# Run FastAPI using the official CLI or uvicorn
+CMD ["fastapi", "run", "main.py", "--port", "8000"]
