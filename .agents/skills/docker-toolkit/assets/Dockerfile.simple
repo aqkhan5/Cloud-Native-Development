@@ -1,24 +1,31 @@
 # syntax=docker/dockerfile:1
 # ------------------------------------------------------------------------------
-# Dockerfile.simple: Fast & straightforward for prototypes / Hello World
+# Dockerfile.simple: Fast single-stage prototype container using Astral's uv
 # ------------------------------------------------------------------------------
+# 1. Base image: Official Python slim image
 FROM python:3.12-slim
 
-# Prevent Python from writing .pyc files & enable immediate stdout/stderr flush
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# 2. Package manager: Copy uv binary from official image for ultra-fast package installation
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# 3. Environment flags: Prevent .pyc compilation and ensure unbuffered output
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1
+
+# 4. Workdir: Application directory
 WORKDIR /app
 
-# Leverage layer caching: install dependencies before copying app code
+# 5. Layer caching: Copy requirements manifest and install dependencies with uv before copying app code
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
 
-# Copy application source code
+# 6. Application code: Copy source files into the container
 COPY . .
 
-# Expose standard FastAPI port
+# 7. Metadata: Expose standard FastAPI development port
 EXPOSE 8000
 
-# Run FastAPI using the official CLI or uvicorn
+# 8. Runtime execution: Run FastAPI development server binding to 0.0.0.0
 CMD ["fastapi", "run", "main.py", "--port", "8000"]
