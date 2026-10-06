@@ -45,10 +45,10 @@ FastAPI Project Scope
 
 This skill provides automated Python scripts in `scripts/`:
 
-### 1. Scaffold Dockerfile & .dockerignore
-Auto-detects whether the project uses `uv`, `requirements.txt`, or standard Python and writes the optimized files:
+### 1. Scaffold Dockerfile & Manage .dockerignore
+Generates uv-accelerated Dockerfiles with optimal layer caching, full inline instruction documentation, and automatically generates or non-destructively updates `.dockerignore`:
 ```bash
-python3 path/to/docker-toolkit/scripts/generate_dockerfile.py [--type simple|uv|production] [--force]
+python3 path/to/docker-toolkit/scripts/generate_dockerfile.py [--type uv|production|simple|template] [--force]
 ```
 
 ### 2. Build Helper
