@@ -4,48 +4,53 @@ This reference documents the industry-standard Dockerfile architectural patterns
 
 ---
 
-## Pattern 1: Optimized Layer Caching
+## Pattern 1: Optimized Layer Caching with uv
 
-Docker caches layers by evaluating the files in each `COPY` instruction. If a layer is unchanged, subsequent layers reuse the cache.
+Docker caches layers by evaluating the files in each `COPY` or `RUN --mount` instruction. If dependencies and configurations are unchanged, subsequent layers reuse the cache.
 
 ```dockerfile
-# 1. Base setup (changes rarely)
-FROM python:3.12-slim
+# 1. Base setup: infrequent changes
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 WORKDIR /app
 
-# 2. Dependency manifests (changes only when packages are updated)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 2. Dependency resolution: Mount lockfiles and install into venv before copying app code
+#    Cached across rebuilds via BuildKit cache mount
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 
-# 3. Application code (changes on almost every commit)
+# 3. Application code: Copied after dependencies are installed
 COPY . .
 ```
 
-**Rule**: Always copy and install dependencies *before* copying the application source code.
+**Rule**: Always mount/copy and install dependencies *before* copying the application source code.
 
 ---
 
-## Pattern 2: Multi-Stage Build
+## Pattern 2: Multi-Stage Build with uv
 
-Compilers and SDK tools (like `gcc`, `build-essential`, `cargo`) are needed to compile dependencies (e.g. C-extensions or wheels), but have no place in production runtime images.
+Compilers and SDK tools (like `gcc`, `build-essential`, `cargo`) and build utilities are isolated to the builder stage, keeping the production runtime minimal and secure.
 
 ```dockerfile
-# Stage 1: Build stage with compiler toolchains
-FROM python:3.12-slim AS builder
+# Stage 1: Build stage using uv for ultra-fast dependency synchronization
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 
-# Stage 2: Clean runtime stage
+# Stage 2: Clean runtime stage using minimal Python slim
 FROM python:3.12-slim AS runtime
 WORKDIR /app
-ENV PATH="/opt/venv/bin:$PATH"
-# Copy only the compiled virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-COPY . .
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy pre-compiled virtual environment from builder stage
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code with non-root ownership
+COPY --chown=appuser:appgroup . .
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
